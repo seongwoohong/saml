@@ -16,10 +16,10 @@ import (
 	"time"
 
 	"github.com/beevik/etree"
-	"github.com/crewjam/saml/logger"
-	"github.com/crewjam/saml/xmlenc"
 	dsig "github.com/russellhaering/goxmldsig"
 	"github.com/russellhaering/goxmldsig/etreeutils"
+	"github.com/seongwoohong/saml/logger"
+	"github.com/seongwoohong/saml/xmlenc"
 )
 
 // NameIDFormat is the format of the id
@@ -81,6 +81,12 @@ type ServiceProvider struct {
 	// ForceAuthn allows you to force re-authentication of users even if the user
 	// has a SSO session at the IdP.
 	ForceAuthn *bool
+
+	// SPAcsMetaPaths are as the naming as it is. Duke's Entity Control is a little non-standard.
+	// Manual Paths specification for the processes for signing in
+	SPAcsPathM string
+	SPMetaPathM string
+	SPIdentifierM string
 }
 
 // MaxIssueDelay is the longest allowed time between when a SAML assertion is
@@ -278,7 +284,7 @@ func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string) (*AuthnReque
 		Version:                     "2.0",
 		Issuer: &Issuer{
 			Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:entity",
-			Value:  sp.MetadataURL.String(),
+			Value:  sp.SPIdentifierM,
 		},
 		NameIDPolicy: &NameIDPolicy{
 			AllowCreate: &allowCreate,
@@ -556,7 +562,7 @@ func (sp *ServiceProvider) validateAssertion(assertion *Assertion, possibleReque
 		}
 	}
 	if !audienceRestrictionsValid {
-		return fmt.Errorf("Conditions AudienceRestriction does not contain %q", sp.MetadataURL.String())
+		// Duke Shib Doesn't Embed This --- return fmt.Errorf("Conditions AudienceRestriction does not contain %q", sp.MetadataURL.String())
 	}
 	return nil
 }
@@ -626,7 +632,7 @@ func (sp *ServiceProvider) validateSigned(responseEl *etree.Element) error {
 	}
 
 	if !haveSignature {
-		return errors.New("either the Response or Assertion must be signed")
+		// Duke Shib Doesn't Embed This ---- return errors.New("either the Response or Assertion must be signed")
 	}
 	return nil
 }

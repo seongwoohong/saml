@@ -12,8 +12,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/crewjam/saml"
-	"github.com/crewjam/saml/logger"
+	"github.com/seongwoohong/saml"
+	"github.com/seongwoohong/saml/logger"
 )
 
 const defaultTokenMaxAge = time.Hour
@@ -33,14 +33,18 @@ type Options struct {
 	CookieDomain      string
 	CookieSecure      bool
 	ForceAuthn        bool
+	SPAcsPathM        string
+	SPMetaPathM       string
+	SPIdentifierM     string
 }
 
 // New creates a new Middleware
 func New(opts Options) (*Middleware, error) {
-	metadataRelURL, _ := url.Parse("saml/metadata")
+	metadataRelURL, _ := url.Parse(opts.SPMetaPathM)
 	metadataURL := opts.URL.ResolveReference(metadataRelURL)
-	acsRelURL, _ := url.Parse("saml/acs")
+	acsRelURL, _ := url.Parse(opts.SPAcsPathM)
 	acsURL := opts.URL.ResolveReference(acsRelURL)
+
 	logr := opts.Logger
 	if logr == nil {
 		logr = logger.DefaultLogger
@@ -60,6 +64,9 @@ func New(opts Options) (*Middleware, error) {
 			AcsURL:      *acsURL,
 			IDPMetadata: opts.IDPMetadata,
 			ForceAuthn:  &opts.ForceAuthn,
+			SPIdentifierM: opts.SPIdentifierM,
+			SPMetaPathM:  opts.SPMetaPathM,
+			SPAcsPathM:   opts.SPAcsPathM,
 		},
 		AllowIDPInitiated: opts.AllowIDPInitiated,
 		TokenMaxAge:       tokenMaxAge,
@@ -99,7 +106,7 @@ func New(opts Options) (*Middleware, error) {
 	}
 	// Some providers (like OneLogin) do not work properly unless the User-Agent header is specified.
 	// Setting the user agent prevents the 403 Forbidden errors.
-	req.Header.Set("User-Agent", "Golang; github.com/crewjam/saml")
+	req.Header.Set("User-Agent", "Duke-Shib Authenticator")
 
 	for i := 0; true; i++ {
 		resp, err := c.Do(req)
