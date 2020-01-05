@@ -2,6 +2,7 @@ package samlidp
 
 import (
 	"crypto"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 	"net/http"
@@ -11,17 +12,12 @@ import (
 	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
-
-	"crypto/rsa"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/crewjam/saml"
 	"github.com/crewjam/saml/logger"
-	"github.com/dgrijalva/jwt-go"
 )
-
-// Hook up gocheck into the "go test" runner.
-func Test(t *testing.T) { TestingT(t) }
 
 type testRandomReader struct {
 	Next byte
@@ -78,9 +74,8 @@ type ServerTest struct {
 	Store       MemoryStore
 }
 
-var _ = Suite(&ServerTest{})
-
-func (test *ServerTest) SetUpTest(c *C) {
+func NewServerTest() *ServerTest {
+	test := ServerTest{}
 	saml.TimeNow = func() time.Time {
 		rv, _ := time.Parse("Mon Jan 2 15:04:05 MST 2006", "Mon Dec 1 01:57:09 UTC 2015")
 		return rv
@@ -124,7 +119,6 @@ OwJlNCASPZRH/JmF8tX0hoHuAQ==
 		MetadataURL: mustParseURL("https://sp.example.com/saml2/metadata"),
 		AcsURL:      mustParseURL("https://sp.example.com/saml2/acs"),
 		IDPMetadata: &saml.EntityDescriptor{},
-		Logger:      logger.DefaultLogger,
 	}
 	test.Key = mustParsePrivateKey("-----BEGIN RSA PRIVATE KEY-----\nMIICXgIBAAKBgQDU8wdiaFmPfTyRYuFlVPi866WrH/2JubkHzp89bBQopDaLXYxi\n3PTu3O6Q/KaKxMOFBqrInwqpv/omOGZ4ycQ51O9I+Yc7ybVlW94lTo2gpGf+Y/8E\nPsVbnZaFutRctJ4dVIp9aQ2TpLiGT0xX1OzBO/JEgq9GzDRf+B+eqSuglwIDAQAB\nAoGBAMuy1eN6cgFiCOgBsB3gVDdTKpww87Qk5ivjqEt28SmXO13A1KNVPS6oQ8SJ\nCT5Azc6X/BIAoJCURVL+LHdqebogKljhH/3yIel1kH19vr4E2kTM/tYH+qj8afUS\nJEmArUzsmmK8ccuNqBcllqdwCZjxL4CHDUmyRudFcHVX9oyhAkEA/OV1OkjM3CLU\nN3sqELdMmHq5QZCUihBmk3/N5OvGdqAFGBlEeewlepEVxkh7JnaNXAXrKHRVu/f/\nfbCQxH+qrwJBANeQERF97b9Sibp9xgolb749UWNlAdqmEpmlvmS202TdcaaT1msU\n4rRLiQN3X9O9mq4LZMSVethrQAdX1whawpkCQQDk1yGf7xZpMJ8F4U5sN+F4rLyM\nRq8Sy8p2OBTwzCUXXK+fYeXjybsUUMr6VMYTRP2fQr/LKJIX+E5ZxvcIyFmDAkEA\nyfjNVUNVaIbQTzEbRlRvT6MqR+PTCefC072NF9aJWR93JimspGZMR7viY6IM4lrr\nvBkm0F5yXKaYtoiiDMzlOQJADqmEwXl0D72ZG/2KDg8b4QZEmC9i5gidpQwJXUc6\nhU+IVQoLxRq0fBib/36K9tcrrO5Ba4iEvDcNY+D8yGbUtA==\n-----END RSA PRIVATE KEY-----\n")
 	test.Certificate = mustParseCertificate("-----BEGIN CERTIFICATE-----\nMIIB7zCCAVgCCQDFzbKIp7b3MTANBgkqhkiG9w0BAQUFADA8MQswCQYDVQQGEwJV\nUzELMAkGA1UECAwCR0ExDDAKBgNVBAoMA2ZvbzESMBAGA1UEAwwJbG9jYWxob3N0\nMB4XDTEzMTAwMjAwMDg1MVoXDTE0MTAwMjAwMDg1MVowPDELMAkGA1UEBhMCVVMx\nCzAJBgNVBAgMAkdBMQwwCgYDVQQKDANmb28xEjAQBgNVBAMMCWxvY2FsaG9zdDCB\nnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEA1PMHYmhZj308kWLhZVT4vOulqx/9\nibm5B86fPWwUKKQ2i12MYtz07tzukPymisTDhQaqyJ8Kqb/6JjhmeMnEOdTvSPmH\nO8m1ZVveJU6NoKRn/mP/BD7FW52WhbrUXLSeHVSKfWkNk6S4hk9MV9TswTvyRIKv\nRsw0X/gfnqkroJcCAwEAATANBgkqhkiG9w0BAQUFAAOBgQCMMlIO+GNcGekevKgk\nakpMdAqJfs24maGb90DvTLbRZRD7Xvn1MnVBBS9hzlXiFLYOInXACMW5gcoRFfeT\nQLSouMM8o57h0uKjfTmuoWHLQLi6hnF+cvCsEFiJZ4AbF+DgmO6TarJ8O05t8zvn\nOwJlNCASPZRH/JmF8tX0hoHuAQ==\n-----END CERTIFICATE-----\n")
@@ -139,27 +133,36 @@ OwJlNCASPZRH/JmF8tX0hoHuAQ==
 		Store:       &test.Store,
 		URL:         url.URL{Scheme: "https", Host: "idp.example.com"},
 	})
-	c.Assert(err, IsNil)
+	if err != nil {
+		panic(err)
+	}
 
 	test.SP.IDPMetadata = test.Server.IDP.Metadata()
 	test.Server.serviceProviders["https://sp.example.com/saml2/metadata"] = test.SP.Metadata()
+	return &test
 }
 
-func (test *ServerTest) TestHTTPCanHandleMetadataRequest(c *C) {
+func TestHTTPCanHandleMetadataRequest(t *testing.T) {
+	test := NewServerTest()
 	w := httptest.NewRecorder()
 	r, _ := http.NewRequest("GET", "https://idp.example.com/metadata", nil)
 	test.Server.ServeHTTP(w, r)
-	c.Assert(w.Code, Equals, http.StatusOK)
-	c.Assert(strings.HasPrefix(string(w.Body.Bytes()), "<EntityDescriptor"), Equals, true)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t,
+		strings.HasPrefix(string(w.Body.Bytes()), "<EntityDescriptor"),
+		string(w.Body.Bytes()))
 }
 
-func (test *ServerTest) TestHTTPCanSSORequest(c *C) {
+func TestHTTPCanSSORequest(t *testing.T) {
+	test := NewServerTest()
 	u, err := test.SP.MakeRedirectAuthenticationRequest("frob")
-	c.Assert(err, IsNil)
+	assert.NoError(t, err)
 
 	w := httptest.NewRecorder()
 	r, _ := http.NewRequest("GET", u.String(), nil)
 	test.Server.ServeHTTP(w, r)
-	c.Assert(w.Code, Equals, http.StatusOK)
-	c.Assert(strings.HasPrefix(string(w.Body.Bytes()), "<html><p></p><form method=\"post\" action=\"https://idp.example.com/sso\">"), Equals, true)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t,
+		strings.HasPrefix(string(w.Body.Bytes()), "<html><p></p><form method=\"post\" action=\"https://idp.example.com/sso\">"),
+		string(w.Body.Bytes()))
 }
