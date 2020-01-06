@@ -1,6 +1,7 @@
 package samlsp
 
 import (
+	"context"
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
@@ -8,18 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"testing"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
 )
-
-var _ = Suite(&ParseTest{})
-
-type ParseTest struct {
-}
-
-func (test *ParseTest) SetUpTest(c *C) {
-
-}
 
 type mockTransport func(req *http.Request) (*http.Response, error)
 
@@ -59,9 +52,10 @@ func mustParseCertificate(pemStr string) *x509.Certificate {
 	return cert
 }
 
-func (test *ParseTest) TestCanParseTestshibMetadata(c *C) {
-	http.DefaultTransport = mockTransport(func(req *http.Request) (*http.Response, error) {
-		responseBody := `<EntitiesDescriptor Name="urn:mace:shibboleth:testshib:two"
+func TestCanParseTestshibMetadata(t *testing.T) {
+	httpClient := http.Client{
+		Transport: mockTransport(func(req *http.Request) (*http.Response, error) {
+			responseBody := `<EntitiesDescriptor Name="urn:mace:shibboleth:testshib:two"
     xmlns="urn:oasis:names:tc:SAML:2.0:metadata" xmlns:ds="http://www.w3.org/2000/09/xmldsig#"
     xmlns:mdalg="urn:oasis:names:tc:SAML:metadata:algsupport" xmlns:mdui="urn:oasis:names:tc:SAML:metadata:ui"
     xmlns:shibmd="urn:mace:shibboleth:metadata:1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -439,25 +433,27 @@ func (test *ParseTest) TestCanParseTestshibMetadata(c *C) {
 
 
 </EntitiesDescriptor>`
-		return &http.Response{
-			Header:     http.Header{},
-			Request:    req,
-			StatusCode: http.StatusOK,
-			Body:       ioutil.NopCloser(strings.NewReader(responseBody)),
-		}, nil
-	})
+			return &http.Response{
+				Header:     http.Header{},
+				Request:    req,
+				StatusCode: http.StatusOK,
+				Body:       ioutil.NopCloser(strings.NewReader(responseBody)),
+			}, nil
+		}),
+	}
 
-	u := mustParseURL("https://idp.testshib.org/idp/shibboleth")
-	m, err := New(Options{IDPMetadataURL: &u})
-	c.Assert(err, IsNil)
-	c.Assert(m, NotNil)
-	c.Assert(m.ServiceProvider.IDPMetadata, NotNil)
-	c.Assert(m.ServiceProvider.IDPMetadata.EntityID, Equals, "https://idp.testshib.org/idp/shibboleth")
+	md, err := FetchMetadata(context.Background(),
+		&httpClient,
+		mustParseURL("https://idp.testshib.org/idp/shibboleth"))
+
+	assert.NoError(t, err)
+	assert.Equal(t, "https://idp.testshib.org/idp/shibboleth", md.EntityID)
 }
 
-func (test *ParseTest) TestCanParseGoogleMetadata(c *C) {
-	http.DefaultTransport = mockTransport(func(req *http.Request) (*http.Response, error) {
-		responseBody := `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+func TestCanParseGoogleMetadata(t *testing.T) {
+	httpClient := http.Client{
+		Transport: mockTransport(func(req *http.Request) (*http.Response, error) {
+			responseBody := `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" entityID="https://accounts.google.com/o/saml2?idpid=123456789" validUntil="2021-01-03T16:17:49.000Z">
   <md:IDPSSODescriptor WantAuthnRequestsSigned="false" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
     <md:KeyDescriptor use="signing">
@@ -489,22 +485,25 @@ MUsphIQXHXtrx4Z3qRgE/uZ8z98LA35XfA==</ds:X509Certificate>
     <md:SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="https://accounts.google.com/o/saml2/idp?idpid=123456789"/>
   </md:IDPSSODescriptor>
 </md:EntityDescriptor>`
-		return &http.Response{
-			Header:     http.Header{},
-			Request:    req,
-			StatusCode: http.StatusOK,
-			Body:       ioutil.NopCloser(strings.NewReader(responseBody)),
-		}, nil
-	})
+			return &http.Response{
+				Header:     http.Header{},
+				Request:    req,
+				StatusCode: http.StatusOK,
+				Body:       ioutil.NopCloser(strings.NewReader(responseBody)),
+			}, nil
+		}),
+	}
 
-	u := mustParseURL("https://accounts.google.com/o/saml2?idpid=123456789")
-	_, err := New(Options{IDPMetadataURL: &u})
-	c.Assert(err, IsNil)
+	_, err := FetchMetadata(context.Background(),
+		&httpClient,
+		mustParseURL("https://accounts.google.com/o/saml2?idpid=123456789"))
+	assert.NoError(t, err)
 }
 
-func (test *ParseTest) TestCanParseFreeIPAMetadata(c *C) {
-	http.DefaultTransport = mockTransport(func(req *http.Request) (*http.Response, error) {
-		responseBody := `<?xml version='1.0' encoding='UTF-8'?>
+func TestCanParseFreeIPAMetadata(t *testing.T) {
+	httpClient := http.Client{
+		Transport: mockTransport(func(req *http.Request) (*http.Response, error) {
+			responseBody := `<?xml version='1.0' encoding='UTF-8'?>
 <md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" validUntil="2021-10-11T12:03:21.537380" entityID="https://ipa.example.com/idp/saml2/metadata">
   <md:IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
     <md:KeyDescriptor use="signing">
@@ -566,15 +565,17 @@ MUsphIQXHXtrx4Z3qRgE/uZ8z98LA35XfA==
     <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>
   </md:IDPSSODescriptor>
 </md:EntityDescriptor>`
-		return &http.Response{
-			Header:     http.Header{},
-			Request:    req,
-			StatusCode: http.StatusOK,
-			Body:       ioutil.NopCloser(strings.NewReader(responseBody)),
-		}, nil
-	})
+			return &http.Response{
+				Header:     http.Header{},
+				Request:    req,
+				StatusCode: http.StatusOK,
+				Body:       ioutil.NopCloser(strings.NewReader(responseBody)),
+			}, nil
+		}),
+	}
 
-	u := mustParseURL("https://ipa.example.com/idp/saml2/metadata")
-	_, err := New(Options{IDPMetadataURL: &u})
-	c.Assert(err, IsNil)
+	_, err := FetchMetadata(context.Background(),
+		&httpClient,
+		mustParseURL("https://ipa.example.com/idp/saml2/metadata"))
+	assert.NoError(t, err)
 }

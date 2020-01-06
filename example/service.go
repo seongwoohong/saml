@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -19,8 +20,7 @@ import (
 	"github.com/zenazn/goji/web"
 
 	"github.com/seongwoohong/saml/logger"
-	"github.com/seongwoohong/saml/samlsp"
-)
+	"github.com/seongwoohong/saml/samlsp")
 
 var links = map[string]Link{}
 
@@ -100,7 +100,6 @@ OwJlNCASPZRH/JmF8tX0hoHuAQ==
 )
 
 func main() {
-	logr := logger.DefaultLogger
 	rootURLstr := flag.String("url", "https://962766ce.ngrok.io", "The base URL of this service")
 	idpMetadataURLstr := flag.String("idp", "https://516becc2.ngrok.io/metadata", "The metadata URL for the IDP")
 	flag.Parse()
@@ -114,7 +113,8 @@ func main() {
 		panic(err) // TODO handle error
 	}
 
-	idpMetadataURL, err := url.Parse(*idpMetadataURLstr)
+	idpMetadata, err := samlsp.FetchMetadata(context.Background(), http.DefaultClient,
+		*idpMetadataURL)
 	if err != nil {
 		panic(err) // TODO handle error
 	}
@@ -127,13 +127,12 @@ func main() {
 	samlSP, err := samlsp.New(samlsp.Options{
 		URL:               *rootURL,
 		Key:               keyPair.PrivateKey.(*rsa.PrivateKey),
-		Logger:            logr,
 		Certificate:       keyPair.Leaf,
 		AllowIDPInitiated: true,
-		IDPMetadataURL:    idpMetadataURL,
+		IDPMetadata:       idpMetadata,
 	})
 	if err != nil {
-		logr.Fatalf("%s", err)
+		panic(err) // TODO handle error
 	}
 
 	// register with the service provider

@@ -2,3 +2,7 @@
 coverage.out
 coverage.html
 vendor/
+
+# IDE-specific settings
+.idea
+.vscode
