@@ -16,10 +16,10 @@ import (
 	"time"
 
 	"github.com/beevik/etree"
-	"github.com/seongwoohong/saml/logger"
-	"github.com/seongwoohong/saml/xmlenc"
 	dsig "github.com/russellhaering/goxmldsig"
 	"github.com/russellhaering/goxmldsig/etreeutils"
+
+	"github.com/seongwoohong/saml/xmlenc"
 )
 
 // NameIDFormat is the format of the id
@@ -91,18 +91,14 @@ type ServiceProvider struct {
 	// ForceAuthn allows you to force re-authentication of users even if the user
 	// has a SSO session at the IdP.
 	ForceAuthn *bool
+
 	// AllowIdpInitiated
 	AllowIDPInitiated bool
 
 	// SignatureVerifier, if non-nil, allows you to implement an alternative way
 	// to verify signatures.
 	SignatureVerifier SignatureVerifier
-
-	// SPAcsMetaPaths are as the naming as it is. Duke's Entity Control is a little non-standard.
-	// Manual Paths specification for the processes for signing in
-	SPAcsPathM string
-	SPMetaPathM string
-	SPIdentifierM string}
+}
 
 // MaxIssueDelay is the longest allowed time between when a SAML assertion is
 // issued by the IDP and the time it is received by ParseResponse. This is used
@@ -320,7 +316,7 @@ func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string) (*AuthnReque
 		Version:                     "2.0",
 		Issuer: &Issuer{
 			Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:entity",
-			Value:  sp.SPIdentifierM,
+			Value:  sp.MetadataURL.String(),
 		},
 		NameIDPolicy: &NameIDPolicy{
 			AllowCreate: &allowCreate,
@@ -463,7 +459,7 @@ func (sp *ServiceProvider) validateDestination(response []byte, responseDom *Res
 	return nil
 }
 
-// ParseResponse extracts the SAML IDP response received in req, validates	
+// ParseResponse extracts the SAML IDP response received in req, validates
 // it, and returns the verified assertion.
 func (sp *ServiceProvider) ParseResponse(req *http.Request, possibleRequestIDs []string) (*Assertion, error) {
 	now := TimeNow()
@@ -664,8 +660,8 @@ func (sp *ServiceProvider) validateAssertion(assertion *Assertion, possibleReque
 		}
 	}
 	if !audienceRestrictionsValid {
-		return fmt.Errorf("Conditions AudienceRestriction does not contain %q", sp.MetadataURL.String())
-		// Duke Shib Doesn't Embed This ---- return errors.New("either the Response or Assertion must be signed")	}
+		return fmt.Errorf("assertion Conditions AudienceRestriction does not contain %q", sp.MetadataURL.String())
+	}
 	return nil
 }
 
@@ -734,7 +730,7 @@ func (sp *ServiceProvider) validateSigned(responseEl *etree.Element) error {
 	}
 
 	if !haveSignature {
-		// Duke Shib Doesn't Embed This ---- return errors.New("either the Response or Assertion must be signed")
+		return errors.New("either the Response or Assertion must be signed")
 	}
 	return nil
 }

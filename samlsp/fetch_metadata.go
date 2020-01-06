@@ -8,8 +8,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/seongwoohong/httperr"
-
+	"github.com/crewjam/httperr"
 	"github.com/seongwoohong/saml"
 )
 

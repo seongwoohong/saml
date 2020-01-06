@@ -3,7 +3,6 @@ package samlsp
 import (
 	"encoding/xml"
 	"net/http"
-	"time"
 	"github.com/seongwoohong/saml"
 )
 
