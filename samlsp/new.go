@@ -15,6 +15,7 @@ import (
 
 // Options represents the parameters for creating a new middleware
 type Options struct {
+	EntityID          string
 	URL               url.URL
 	Key               *rsa.PrivateKey
 	Certificate       *x509.Certificate
@@ -81,11 +82,12 @@ func DefaultSessionProvider(opts Options) CookieSessionProvider {
 	}
 
 	return CookieSessionProvider{
-		Name:   cookieName,
-		Domain: cookieDomain,
-		MaxAge: maxAge,
-		Secure: cookieSecure,
-		Codec:  DefaultSessionCodec(opts),
+		Name:     cookieName,
+		Domain:   cookieDomain,
+		MaxAge:   maxAge,
+		HTTPOnly: true,
+		Secure:   cookieSecure,
+		Codec:    DefaultSessionCodec(opts),
 	}
 }
 
@@ -125,6 +127,7 @@ func DefaultServiceProvider(opts Options) saml.ServiceProvider {
 	}
 
 	return saml.ServiceProvider{
+		EntityID:          opts.EntityID,
 		Key:               opts.Key,
 		Certificate:       opts.Certificate,
 		Intermediates:     opts.Intermediates,

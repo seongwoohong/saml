@@ -58,6 +58,9 @@ type SignatureVerifier interface {
 // See the example directory for an example of a web application using
 // the service provider interface.
 type ServiceProvider struct {
+	// Entity ID is optional - if not specified then MetadataURL will be used
+	EntityID string
+
 	// Key is the RSA private key we use to sign requests.
 	Key *rsa.PrivateKey
 
@@ -156,7 +159,7 @@ func (sp *ServiceProvider) Metadata() *EntityDescriptor {
 	}
 
 	return &EntityDescriptor{
-		EntityID:   sp.MetadataURL.String(),
+		EntityID:   firstSet(sp.EntityID, sp.MetadataURL.String()),
 		ValidUntil: validUntil,
 
 		SPSSODescriptors: []SPSSODescriptor{
@@ -316,7 +319,7 @@ func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string) (*AuthnReque
 		Version:                     "2.0",
 		Issuer: &Issuer{
 			Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:entity",
-			Value:  sp.MetadataURL.String(),
+			Value:  firstSet(sp.EntityID, sp.MetadataURL.String()),
 		},
 		NameIDPolicy: &NameIDPolicy{
 			AllowCreate: &allowCreate,
@@ -514,16 +517,18 @@ func (sp *ServiceProvider) ParseXMLResponse(decodedResponseXML []byte, possibleR
 		return nil, retErr
 	}
 
-	if sp.AllowIDPInitiated && len(possibleRequestIDs) == 0 {
-		possibleRequestIDs = append([]string{""})
-	}
-
 	requestIDvalid := false
-	for _, possibleRequestID := range possibleRequestIDs {
-		if resp.InResponseTo == possibleRequestID {
-			requestIDvalid = true
+
+	if sp.AllowIDPInitiated {
+		requestIDvalid = true
+	} else {
+		for _, possibleRequestID := range possibleRequestIDs {
+			if resp.InResponseTo == possibleRequestID {
+				requestIDvalid = true
+			}
 		}
 	}
+
 	if !requestIDvalid {
 		retErr.PrivateErr = fmt.Errorf("`InResponseTo` does not match any of the possible request IDs (expected %v)", possibleRequestIDs)
 		return nil, retErr
@@ -654,13 +659,14 @@ func (sp *ServiceProvider) validateAssertion(assertion *Assertion, possibleReque
 	}
 
 	audienceRestrictionsValid := len(assertion.Conditions.AudienceRestrictions) == 0
+	audience := firstSet(sp.EntityID, sp.MetadataURL.String())
 	for _, audienceRestriction := range assertion.Conditions.AudienceRestrictions {
-		if audienceRestriction.Audience.Value == sp.MetadataURL.String() {
+		if audienceRestriction.Audience.Value == audience {
 			audienceRestrictionsValid = true
 		}
 	}
 	if !audienceRestrictionsValid {
-		return fmt.Errorf("assertion Conditions AudienceRestriction does not contain %q", sp.MetadataURL.String())
+		return fmt.Errorf("assertion Conditions AudienceRestriction does not contain %q", audience)
 	}
 	return nil
 }
@@ -800,7 +806,7 @@ func (sp *ServiceProvider) MakeLogoutRequest(idpURL, nameID string) (*LogoutRequ
 		Destination:  idpURL,
 		Issuer: &Issuer{
 			Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:entity",
-			Value:  sp.MetadataURL.String(),
+			Value:  firstSet(sp.EntityID, sp.MetadataURL.String()),
 		},
 		NameID: &NameID{
 			Format:          sp.nameIDFormat(),
@@ -815,8 +821,84 @@ func (sp *ServiceProvider) MakeLogoutRequest(idpURL, nameID string) (*LogoutRequ
 // MakeRedirectLogoutRequest creates a SAML authentication request using
 // the HTTP-Redirect binding. It returns a URL that we will redirect the user to
 // in order to start the auth process.
-func (sp *ServiceProvider) MakeRedirectLogoutRequest(nameID string) (*LogoutRequest, error) {
-	return sp.MakeLogoutRequest(sp.GetSLOBindingLocation(HTTPRedirectBinding), nameID)
+func (sp *ServiceProvider) MakeRedirectLogoutRequest(nameID, relayState string) (*url.URL, error) {
+	req, err := sp.MakeLogoutRequest(sp.GetSLOBindingLocation(HTTPRedirectBinding), nameID)
+	if err != nil {
+		return nil, err
+	}
+	return req.Redirect(relayState), nil
+}
+
+// Redirect returns a URL suitable for using the redirect binding with the request
+func (req *LogoutRequest) Redirect(relayState string) *url.URL {
+	w := &bytes.Buffer{}
+	w1 := base64.NewEncoder(base64.StdEncoding, w)
+	w2, _ := flate.NewWriter(w1, 9)
+	doc := etree.NewDocument()
+	doc.SetRoot(req.Element())
+	if _, err := doc.WriteTo(w2); err != nil {
+		panic(err)
+	}
+	w2.Close()
+	w1.Close()
+
+	rv, _ := url.Parse(req.Destination)
+
+	query := rv.Query()
+	query.Set("SAMLRequest", string(w.Bytes()))
+	if relayState != "" {
+		query.Set("RelayState", relayState)
+	}
+	rv.RawQuery = query.Encode()
+
+	return rv
+}
+
+// MakePostLogoutRequest creates a SAML authentication request using
+// the HTTP-POST binding. It returns HTML text representing an HTML form that
+// can be sent presented to a browser to initiate the logout process.
+func (sp *ServiceProvider) MakePostLogoutRequest(nameID, relayState string) ([]byte, error) {
+	req, err := sp.MakeLogoutRequest(sp.GetSLOBindingLocation(HTTPPostBinding), nameID)
+	if err != nil {
+		return nil, err
+	}
+	return req.Post(relayState), nil
+}
+
+// Post returns an HTML form suitable for using the HTTP-POST binding with the request
+func (req *LogoutRequest) Post(relayState string) []byte {
+	doc := etree.NewDocument()
+	doc.SetRoot(req.Element())
+	reqBuf, err := doc.WriteToBytes()
+	if err != nil {
+		panic(err)
+	}
+	encodedReqBuf := base64.StdEncoding.EncodeToString(reqBuf)
+
+	tmpl := template.Must(template.New("saml-post-form").Parse(`` +
+		`<form method="post" action="{{.URL}}" id="SAMLRequestForm">` +
+		`<input type="hidden" name="SAMLRequest" value="{{.SAMLRequest}}" />` +
+		`<input type="hidden" name="RelayState" value="{{.RelayState}}" />` +
+		`<input id="SAMLSubmitButton" type="submit" value="Submit" />` +
+		`</form>` +
+		`<script>document.getElementById('SAMLSubmitButton').style.visibility="hidden";` +
+		`document.getElementById('SAMLRequestForm').submit();</script>`))
+	data := struct {
+		URL         string
+		SAMLRequest string
+		RelayState  string
+	}{
+		URL:         req.Destination,
+		SAMLRequest: encodedReqBuf,
+		RelayState:  relayState,
+	}
+
+	rv := bytes.Buffer{}
+	if err := tmpl.Execute(&rv, data); err != nil {
+		panic(err)
+	}
+
+	return rv.Bytes()
 }
 
 func (sp *ServiceProvider) nameIDFormat() string {
@@ -833,18 +915,89 @@ func (sp *ServiceProvider) nameIDFormat() string {
 	return nameIDFormat
 }
 
-// ValidateLogoutResponse returns a nil error iff the logout request is valid.
-func (sp *ServiceProvider) ValidateLogoutResponse(r *http.Request) error {
-	r.ParseForm()
-	rawResponseBuf, err := base64.StdEncoding.DecodeString(r.PostForm.Get("SAMLResponse"))
+// ValidateLogoutResponseRequest validates the LogoutResponse content from the request
+func (sp *ServiceProvider) ValidateLogoutResponseRequest(req *http.Request) error {
+	if data := req.URL.Query().Get("SAMLResponse"); data != "" {
+		return sp.ValidateLogoutResponseRedirect(data)
+	}
+
+	err := req.ParseForm()
+	if err != nil {
+		return fmt.Errorf("unable to parse form: %v", err)
+	}
+
+	return sp.ValidateLogoutResponseForm(req.PostForm.Get("SAMLResponse"))
+}
+
+// ValidatePostLogoutResponse returns a nil error if the logout response is valid.
+func (sp *ServiceProvider) ValidateLogoutResponseForm(postFormData string) error {
+	rawResponseBuf, err := base64.StdEncoding.DecodeString(postFormData)
 	if err != nil {
 		return fmt.Errorf("unable to parse base64: %s", err)
 	}
 
-	resp := LogoutResponse{}
+	var resp LogoutResponse
+
 	if err := xml.Unmarshal(rawResponseBuf, &resp); err != nil {
 		return fmt.Errorf("cannot unmarshal response: %s", err)
 	}
+
+	if err := sp.validateLogoutResponse(&resp); err != nil {
+		return err
+	}
+
+	doc := etree.NewDocument()
+	if err := doc.ReadFromBytes(rawResponseBuf); err != nil {
+		return err
+	}
+
+	responseEl := doc.Root()
+	if err = sp.validateSigned(responseEl); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidateRedirectLogoutResponse returns a nil error if the logout response is valid.
+// URL Binding appears to be gzip / flate encoded
+// See https://www.oasis-open.org/committees/download.php/20645/sstc-saml-tech-overview-2%200-draft-10.pdf  6.6
+func (sp *ServiceProvider) ValidateLogoutResponseRedirect(queryParameterData string) error {
+	rawResponseBuf, err := base64.StdEncoding.DecodeString(queryParameterData)
+	if err != nil {
+		return fmt.Errorf("unable to parse base64: %s", err)
+	}
+
+	gr := flate.NewReader(bytes.NewBuffer(rawResponseBuf))
+
+	decoder := xml.NewDecoder(gr)
+
+	var resp LogoutResponse
+
+	err = decoder.Decode(&resp)
+	if err != nil {
+		return fmt.Errorf("unable to flate decode: %s", err)
+	}
+
+	if err := sp.validateLogoutResponse(&resp); err != nil {
+		return err
+	}
+
+	doc := etree.NewDocument()
+	if _, err := doc.ReadFrom(gr); err != nil {
+		return err
+	}
+
+	responseEl := doc.Root()
+	if err = sp.validateSigned(responseEl); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateLogoutResponse validates the LogoutResponse fields. Returns a nil error if the LogoutResponse is valid.
+func (sp *ServiceProvider) validateLogoutResponse(resp *LogoutResponse) error {
 	if resp.Destination != sp.SloURL.String() {
 		return fmt.Errorf("`Destination` does not match SloURL (expected %q)", sp.SloURL.String())
 	}
@@ -860,14 +1013,12 @@ func (sp *ServiceProvider) ValidateLogoutResponse(r *http.Request) error {
 		return fmt.Errorf("status code was not %s", StatusSuccess)
 	}
 
-	doc := etree.NewDocument()
-	if err := doc.ReadFromBytes(rawResponseBuf); err != nil {
-		return err
-	}
-	responseEl := doc.Root()
-	if err = sp.validateSigned(responseEl); err != nil {
-		return err
-	}
-
 	return nil
+}
+
+func firstSet(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a
 }

@@ -1,6 +1,8 @@
 package saml
 
 import (
+	"bytes"
+	"compress/flate"
 	"encoding/xml"
 	"strconv"
 	"time"
@@ -54,7 +56,7 @@ type LogoutRequest struct {
 	NameID       *NameID
 	Signature    *etree.Element
 
-	SessionIndex string `xml:",attr"`
+	SessionIndex *SessionIndex `xml:"SessionIndex"`
 }
 
 // Element returns an etree.Element representing the object in XML form.
@@ -77,8 +79,8 @@ func (r *LogoutRequest) Element() *etree.Element {
 	if r.Signature != nil {
 		el.AddChild(r.Signature)
 	}
-	if r.SessionIndex != "" {
-		el.CreateAttr("SessionIndex", r.SessionIndex)
+	if r.SessionIndex != nil {
+		el.AddChild(r.SessionIndex.Element())
 	}
 	return el
 }
@@ -110,6 +112,43 @@ func (r *LogoutRequest) UnmarshalXML(d *xml.Decoder, start xml.StartElement) err
 	}
 	r.IssueInstant = time.Time(aux.IssueInstant)
 	return nil
+}
+
+// Bytes returns a byte array representation of the LogoutRequest
+func (r *LogoutRequest) Bytes() ([]byte, error) {
+	doc := etree.NewDocument()
+	doc.SetRoot(r.Element())
+
+	buf, err := doc.WriteToBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	return buf, nil
+}
+
+// Deflate returns a compressed byte array of the LogoutRequest
+func (r *LogoutRequest) Deflate() ([]byte, error) {
+	buf, err := r.Bytes()
+	if err != nil {
+		return nil, err
+	}
+
+	var b bytes.Buffer
+	writer, err := flate.NewWriter(&b, flate.DefaultCompression)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := writer.Write(buf); err != nil {
+		return nil, err
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+
+	return b.Bytes(), nil
 }
 
 // Element returns an etree.Element representing the object
@@ -618,6 +657,23 @@ func (a *NameID) Element() *etree.Element {
 	}
 	if a.Value != "" {
 		el.SetText(a.Value)
+	}
+	return el
+}
+
+// SessionIndex represents the SAML element SessionIndex.
+//
+// See http://docs.oasis-open.org/security/saml/v2.0/saml-core-2.0-os.pdf §3.7.1
+type SessionIndex struct {
+	Value string `xml:",chardata"`
+}
+
+// Element returns an etree.Element representing the object in XML form.
+func (s *SessionIndex) Element() *etree.Element {
+	el := etree.NewElement("samlp:SessionIndex")
+	el.CreateAttr("xmlns:samlp", "urn:oasis:names:tc:SAML:2.0:protocol")
+	if s.Value != "" {
+		el.SetText(s.Value)
 	}
 	return el
 }
