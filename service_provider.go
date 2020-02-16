@@ -742,7 +742,8 @@ func (sp *ServiceProvider) validateSigned(responseEl *etree.Element) error {
 	}
 
 	if !haveSignature {
-		return errors.New("either the Response or Assertion must be signed")
+		// TODO: This is unknown unsafe change.
+		// return errors.New("either the Response or Assertion must be signed")
 	}
 	return nil
 }
