@@ -65,6 +65,10 @@ type ServiceProvider struct {
 	Certificate   *x509.Certificate
 	Intermediates []*x509.Certificate
 
+	// SymbolName is the per se brand name of the SP. I added this because of descrepancy among
+	// actual service SP hosts (devel and prod) while registering only one hostname with the iDP.
+	SymbolName string
+
 	// MetadataURL is the full URL to the metadata endpoint on this host,
 	// i.e. https://example.com/saml/metadata
 	MetadataURL url.URL
@@ -307,6 +311,14 @@ func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string) (*AuthnReque
 
 	allowCreate := true
 	nameIDFormat := sp.nameIDFormat()
+	issuerName := ""
+
+	if sp.SymbolName == "" {
+		issuerName = sp.MetadataURL.String()
+	} else {
+		issuerName = sp.SymbolName
+	}
+
 	req := AuthnRequest{
 		AssertionConsumerServiceURL: sp.AcsURL.String(),
 		Destination:                 idpURL,
@@ -316,7 +328,7 @@ func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string) (*AuthnReque
 		Version:                     "2.0",
 		Issuer: &Issuer{
 			Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:entity",
-			Value:  sp.MetadataURL.String(),
+			Value:  issuerName,
 		},
 		NameIDPolicy: &NameIDPolicy{
 			AllowCreate: &allowCreate,
