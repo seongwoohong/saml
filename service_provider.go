@@ -666,8 +666,16 @@ func (sp *ServiceProvider) validateAssertion(assertion *Assertion, possibleReque
 	}
 
 	audienceRestrictionsValid := len(assertion.Conditions.AudienceRestrictions) == 0
+	
+	issuerName := ""
+	if sp.SymbolName == "" {
+		issuerName = sp.MetadataURL.String()
+	} else {
+		issuerName = sp.SymbolName
+	} // TODO: Clean Change Needed
+	
 	for _, audienceRestriction := range assertion.Conditions.AudienceRestrictions {
-		if audienceRestriction.Audience.Value == sp.MetadataURL.String() {
+		if audienceRestriction.Audience.Value == issuerName {
 			audienceRestrictionsValid = true
 		}
 	}
@@ -806,6 +814,13 @@ func (sp *ServiceProvider) validateSignature(el *etree.Element) error {
 // MakeLogoutRequest produces a new LogoutRequest object for idpURL.
 func (sp *ServiceProvider) MakeLogoutRequest(idpURL, nameID string) (*LogoutRequest, error) {
 
+	issuerName := ""
+	if sp.SymbolName == "" {
+		issuerName = sp.MetadataURL.String()
+	} else {
+		issuerName = sp.SymbolName
+	}
+	
 	req := LogoutRequest{
 		ID:           fmt.Sprintf("id-%x", randomBytes(20)),
 		IssueInstant: TimeNow(),
@@ -813,7 +828,7 @@ func (sp *ServiceProvider) MakeLogoutRequest(idpURL, nameID string) (*LogoutRequ
 		Destination:  idpURL,
 		Issuer: &Issuer{
 			Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:entity",
-			Value:  sp.MetadataURL.String(),
+			Value:  issuerName,
 		},
 		NameID: &NameID{
 			Format:          sp.nameIDFormat(),
