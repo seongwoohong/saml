@@ -19,8 +19,8 @@ import (
 	"github.com/zenazn/goji"
 	"github.com/zenazn/goji/web"
 
-	"github.com/crewjam/saml/samlsp"
-)
+	"github.com/seongwoohong/saml/logger"
+	"github.com/seongwoohong/saml/samlsp")
 
 var links = map[string]Link{}
 
@@ -109,11 +109,6 @@ func main() {
 		panic(err) // TODO handle error
 	}
 	keyPair.Leaf, err = x509.ParseCertificate(keyPair.Certificate[0])
-	if err != nil {
-		panic(err) // TODO handle error
-	}
-
-	idpMetadataURL, err := url.Parse(*idpMetadataURLstr)
 	if err != nil {
 		panic(err) // TODO handle error
 	}

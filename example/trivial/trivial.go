@@ -8,8 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-
-	"github.com/crewjam/saml/samlsp"
+	"github.com/seongwoohong/saml/samlsp"
 )
 
 func hello(w http.ResponseWriter, r *http.Request) {

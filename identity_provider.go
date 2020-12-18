@@ -21,10 +21,9 @@ import (
 
 	"github.com/beevik/etree"
 	xrv "github.com/mattermost/xml-roundtrip-validator"
+	"github.com/seongwoohong/saml/logger"
+	"github.com/seongwoohong/saml/xmlenc"
 	dsig "github.com/russellhaering/goxmldsig"
-
-	"github.com/crewjam/saml/logger"
-	"github.com/crewjam/saml/xmlenc"
 )
 
 // Session represents a user session. It is returned by the

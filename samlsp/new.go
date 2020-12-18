@@ -8,8 +8,7 @@ import (
 	"net/url"
 
 	dsig "github.com/russellhaering/goxmldsig"
-
-	"github.com/crewjam/saml"
+	"github.com/seongwoohong/saml"
 )
 
 // Options represents the parameters for creating a new middleware

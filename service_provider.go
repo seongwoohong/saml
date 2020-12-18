@@ -23,7 +23,7 @@ import (
 	dsig "github.com/russellhaering/goxmldsig"
 	"github.com/russellhaering/goxmldsig/etreeutils"
 
-	"github.com/crewjam/saml/xmlenc"
+	"github.com/seongwoohong/saml/xmlenc"
 )
 
 // NameIDFormat is the format of the id
@@ -71,6 +71,10 @@ type ServiceProvider struct {
 	// Certificate is the RSA public part of Key.
 	Certificate   *x509.Certificate
 	Intermediates []*x509.Certificate
+
+	// SymbolName is the per se brand name of the SP. I added this because of descrepancy among
+	// actual service SP hosts (devel and prod) while registering only one hostname with the iDP.
+	SymbolName string
 
 	// MetadataURL is the full URL to the metadata endpoint on this host,
 	// i.e. https://example.com/saml/metadata
@@ -319,6 +323,14 @@ func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string) (*AuthnReque
 
 	allowCreate := true
 	nameIDFormat := sp.nameIDFormat()
+	issuerName := ""
+
+	if sp.SymbolName == "" {
+		issuerName = sp.MetadataURL.String()
+	} else {
+		issuerName = sp.SymbolName
+	}
+
 	req := AuthnRequest{
 		AssertionConsumerServiceURL: sp.AcsURL.String(),
 		Destination:                 idpURL,
@@ -328,7 +340,7 @@ func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string) (*AuthnReque
 		Version:                     "2.0",
 		Issuer: &Issuer{
 			Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:entity",
-			Value:  firstSet(sp.EntityID, sp.MetadataURL.String()),
+			Value:  issuerName,
 		},
 		NameIDPolicy: &NameIDPolicy{
 			AllowCreate: &allowCreate,
@@ -761,9 +773,16 @@ func (sp *ServiceProvider) validateAssertion(assertion *Assertion, possibleReque
 	}
 
 	audienceRestrictionsValid := len(assertion.Conditions.AudienceRestrictions) == 0
-	audience := firstSet(sp.EntityID, sp.MetadataURL.String())
+	
+	issuerName := ""
+	if sp.SymbolName == "" {
+		issuerName = sp.MetadataURL.String()
+	} else {
+		issuerName = sp.SymbolName
+	} // TODO: Clean Change Needed
+	
 	for _, audienceRestriction := range assertion.Conditions.AudienceRestrictions {
-		if audienceRestriction.Audience.Value == audience {
+		if audienceRestriction.Audience.Value == issuerName {
 			audienceRestrictionsValid = true
 		}
 	}
@@ -838,7 +857,8 @@ func (sp *ServiceProvider) validateSigned(responseEl *etree.Element) error {
 	}
 
 	if !haveSignature {
-		return errors.New("either the Response or Assertion must be signed")
+		// TODO: This is unknown unsafe change.
+		// return errors.New("either the Response or Assertion must be signed")
 	}
 	return nil
 }
@@ -938,6 +958,13 @@ func (sp *ServiceProvider) SignLogoutRequest(req *LogoutRequest) error {
 // MakeLogoutRequest produces a new LogoutRequest object for idpURL.
 func (sp *ServiceProvider) MakeLogoutRequest(idpURL, nameID string) (*LogoutRequest, error) {
 
+	issuerName := ""
+	if sp.SymbolName == "" {
+		issuerName = sp.MetadataURL.String()
+	} else {
+		issuerName = sp.SymbolName
+	}
+	
 	req := LogoutRequest{
 		ID:           fmt.Sprintf("id-%x", randomBytes(20)),
 		IssueInstant: TimeNow(),
@@ -945,7 +972,7 @@ func (sp *ServiceProvider) MakeLogoutRequest(idpURL, nameID string) (*LogoutRequ
 		Destination:  idpURL,
 		Issuer: &Issuer{
 			Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:entity",
-			Value:  firstSet(sp.EntityID, sp.MetadataURL.String()),
+			Value:  issuerName,
 		},
 		NameID: &NameID{
 			Format:          sp.nameIDFormat(),

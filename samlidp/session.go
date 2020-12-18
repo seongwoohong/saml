@@ -11,9 +11,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/seongwoohong/saml"
 	"github.com/zenazn/goji/web"
-
-	"github.com/crewjam/saml"
 )
 
 var sessionMaxAge = time.Hour
