@@ -787,7 +787,7 @@ func (sp *ServiceProvider) validateAssertion(assertion *Assertion, possibleReque
 		}
 	}
 	if !audienceRestrictionsValid {
-		return fmt.Errorf("assertion Conditions AudienceRestriction does not contain %q", audience)
+		return fmt.Errorf("assertion Conditions AudienceRestriction does not contain %q", issuerName)
 	}
 	return nil
 }
