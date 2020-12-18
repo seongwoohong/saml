@@ -2,7 +2,7 @@
 
 [![](https://godoc.org/github.com/crewjam/saml?status.svg)](http://godoc.org/github.com/crewjam/saml)
 
-[![Build Status](https://travis-ci.org/crewjam/saml.svg?branch=master)](https://travis-ci.org/crewjam/saml)
+![Build Status](https://github.com/crewjam/saml/workflows/Presubmit/badge.svg)
 
 Package saml contains a partial implementation of the SAML standard in golang.
 SAML is a standard for identity federation, i.e. either allowing a third party to authenticate your users or allowing third parties to rely on us to authenticate their users.
@@ -12,78 +12,6 @@ SAML is a standard for identity federation, i.e. either allowing a third party t
 In SAML parlance an **Identity Provider** (IDP) is a service that knows how to authenticate users. A **Service Provider** (SP) is a service that delegates authentication to an IDP. If you are building a service where users log in with someone else's credentials, then you are a **Service Provider**. This package supports implementing both service providers and identity providers.
 
 The core package contains the implementation of SAML. The package samlsp provides helper middleware suitable for use in Service Provider applications. The package samlidp provides a rudimentary IDP service that is useful for testing or as a starting point for other integrations.
-
-## Breaking Changes
-
-Version 0.4.0 introduces a few breaking changes to the _samlsp_ package in order to make the package more extensible, and to clean up the interfaces a bit. The default behavior remains the same, but you can now provide interface implementations of _RequestTracker_ (which tracks pending requests), _Session_ (which handles maintaining a session) and _OnError_ which handles reporting errors.
-
-Public fields of _samlsp.Middleware_ have changed, so some usages may require adjustment. See [issue 231](https://github.com/crewjam/saml/issues/231) for details.
-
-The option to provide an IDP metadata **URL** has been deprecated. Instead, we recommend that you use the `FetchMetadata()` function, or fetch the metadata yourself and use the new `ParseMetadata()` function, and pass the metadata in _samlsp.Options.IDPMetadata_.
-
-Similarly, the _HTTPClient_ field is now deprecated because it was only used for fetching metdata, which is no longer directly implemented.
-
-The fields that manage how cookies are set are deprecated as well. To customize how cookies are managed, provide custom implementation of _RequestTracker_ and/or _Session_, perhaps by extending the default implementations.
-
-The deprecated fields have not been removed from the Options structure,
-
-don't need it any more other )
-
-We have
-
-In particular we have deprecated the following fields in
-_samlsp.Options_:
-
-- _Logger_ -- this was used to emit errors while
-
-IDPMetadataURL *url.URL // DEPRECATED: this field will be removed, instead use FetchMetadata
-HTTPClient *http.Client // DEPRECATED: this field will be removed, instead pass httpClient to FetchMetadata
-CookieMaxAge time.Duration // DEPRECATED: this field will be removed. Instead, assign a custom CookieRequestTracker or CookieSessionProvider
-CookieName string // DEPRECATED: this field will be removed. Instead, assign a custom CookieRequestTracker or CookieSessionProvider
-CookieDomain string // DEPRECATED: this field will be removed. Instead, assign a custom CookieRequestTracker or CookieSessionProvider
-CookieSecure
-
-URL url.URL
-Key *rsa.PrivateKey
-Certificate *x509.Certificate
-Intermediates []*x509.Certificate
-AllowIDPInitiated bool
-IDPMetadata *saml.EntityDescriptor
-ForceAuthn bool // TODO(ross): this should be \*bool
-
-    URL               url.URL
-    Key               *rsa.PrivateKey
-    Logger            logger.Interface
-    Certificate       *x509.Certificate
-    Intermediates     []*x509.Certificate
-    AllowIDPInitiated bool
-    IDPMetadata       *saml.EntityDescriptor
-    IDPMetadataURL    *url.URL
-    HTTPClient        *http.Client
-    CookieMaxAge      time.Duration
-    CookieName        string
-    CookieDomain      string
-    CookieSecure      bool
-    ForceAuthn        bool
-
-Note: between version 0.2.0 and the current master include changes to the API
-that will break your existing code a little.
-
-This change turned some fields from pointers to a single optional struct into
-the more correct slice of struct, and to pluralize the field name. For example,
-`IDPSSODescriptor *IDPSSODescriptor` has become
-`IDPSSODescriptors []IDPSSODescriptor`. This more accurately reflects the
-standard.
-
-The struct `Metadata` has been renamed to `EntityDescriptor`. In 0.2.0 and before,
-every struct derived from the standard has the same name as in the standard,
-_except_ for `Metadata` which should always have been called `EntityDescriptor`.
-
-In various places `url.URL` is now used where `string` was used <= version 0.1.0.
-
-In various places where keys and certificates were modeled as `string`
-<= version 0.1.0 (what was I thinking?!) they are now modeled as
-`*rsa.PrivateKey`, `*x509.Certificate`, or `crypto.PrivateKey` as appropriate.
 
 ## Getting Started as a Service Provider
 
@@ -118,6 +46,7 @@ We will use `samlsp.Middleware` to wrap the endpoint we want to protect. Middlew
 package main
 
 import (
+	"context"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -129,7 +58,7 @@ import (
 )
 
 func hello(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hello, %s!", samlsp.Token(r.Context()).Attributes.Get("cn"))
+	fmt.Fprintf(w, "Hello, %s!", samlsp.AttributeFromContext(r.Context(), "cn"))
 }
 
 func main() {
@@ -146,6 +75,11 @@ func main() {
 	if err != nil {
 		panic(err) // TODO handle error
 	}
+	idpMetadata, err := samlsp.FetchMetadata(context.Background(), http.DefaultClient,
+		*idpMetadataURL)
+	if err != nil {
+		panic(err) // TODO handle error
+	}
 
 	rootURL, err := url.Parse("http://localhost:8000")
 	if err != nil {
@@ -156,7 +90,7 @@ func main() {
 		URL:            *rootURL,
 		Key:            keyPair.PrivateKey.(*rsa.PrivateKey),
 		Certificate:    keyPair.Leaf,
-		IDPMetadataURL: idpMetadataURL,
+		IDPMetadata: idpMetadata,
 	})
 	app := http.HandlerFunc(hello)
 	http.Handle("/hello", samlSP.RequireAccount(app))
@@ -220,4 +154,4 @@ The SAML specification is a collection of PDFs (sadly):
 
 ## Security Issues
 
-Please do not report security issues in the issue tracker. Rather, please contact me directly at ross@kndr.org ([PGP Key `78B6038B3B9DFB88`](https://keybase.io/crewjam)).
+Please do not report security issues in the issue tracker. Rather, please contact me directly at ross@kndr.org ([PGP Key `78B6038B3B9DFB88`](https://keybase.io/crewjam)). If your issue is *not* a security issue, please use the issue tracker so other contributors can help.

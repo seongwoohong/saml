@@ -55,6 +55,9 @@ var tokenJSON = []byte(`{
   "nbf": 1448935029,
   "sub": "_41bd295976dadd70e1480f318e772841",
   "attr": {
+    "SessionIndex": [
+      "_6149230ee8fb88d3635c238509d9a35a"
+    ], 
     "cn": [
       "Me Myself And I"
     ],
@@ -177,13 +180,6 @@ func TestMiddlewareCanProduceMetadata(t *testing.T) {
 	assert.Equal(t, ""+
 		"<EntityDescriptor xmlns=\"urn:oasis:names:tc:SAML:2.0:metadata\" validUntil=\"2015-12-03T01:57:09.123Z\" entityID=\"https://15661444.ngrok.io/saml2/metadata\">\n"+
 		"  <SPSSODescriptor xmlns=\"urn:oasis:names:tc:SAML:2.0:metadata\" validUntil=\"2015-12-03T01:57:09.123456789Z\" protocolSupportEnumeration=\"urn:oasis:names:tc:SAML:2.0:protocol\" AuthnRequestsSigned=\"false\" WantAssertionsSigned=\"true\">\n"+
-		"    <KeyDescriptor use=\"signing\">\n"+
-		"      <KeyInfo xmlns=\"http://www.w3.org/2000/09/xmldsig#\">\n"+
-		"        <X509Data>\n"+
-		"          <X509Certificate>MIIB7zCCAVgCCQDFzbKIp7b3MTANBgkqhkiG9w0BAQUFADA8MQswCQYDVQQGEwJVUzELMAkGA1UECAwCR0ExDDAKBgNVBAoMA2ZvbzESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTEzMTAwMjAwMDg1MVoXDTE0MTAwMjAwMDg1MVowPDELMAkGA1UEBhMCVVMxCzAJBgNVBAgMAkdBMQwwCgYDVQQKDANmb28xEjAQBgNVBAMMCWxvY2FsaG9zdDCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEA1PMHYmhZj308kWLhZVT4vOulqx/9ibm5B86fPWwUKKQ2i12MYtz07tzukPymisTDhQaqyJ8Kqb/6JjhmeMnEOdTvSPmHO8m1ZVveJU6NoKRn/mP/BD7FW52WhbrUXLSeHVSKfWkNk6S4hk9MV9TswTvyRIKvRsw0X/gfnqkroJcCAwEAATANBgkqhkiG9w0BAQUFAAOBgQCMMlIO+GNcGekevKgkakpMdAqJfs24maGb90DvTLbRZRD7Xvn1MnVBBS9hzlXiFLYOInXACMW5gcoRFfeTQLSouMM8o57h0uKjfTmuoWHLQLi6hnF+cvCsEFiJZ4AbF+DgmO6TarJ8O05t8zvnOwJlNCASPZRH/JmF8tX0hoHuAQ==</X509Certificate>\n"+
-		"        </X509Data>\n"+
-		"      </KeyInfo>\n"+
-		"    </KeyDescriptor>\n"+
 		"    <KeyDescriptor use=\"encryption\">\n"+
 		"      <KeyInfo xmlns=\"http://www.w3.org/2000/09/xmldsig#\">\n"+
 		"        <X509Data>\n"+
@@ -505,7 +501,7 @@ func TestMiddlewareCanParseResponse(t *testing.T) {
 
 	assert.Equal(t, "/frob", resp.Header().Get("Location"))
 	assert.Equal(t, []string{
-		"saml_KCosLjAyNDY4Ojw-QEJERkhKTE5QUlRWWFpcXmBiZGZoamxucHJ0dnh6=; Expires=Thu, 01 Jan 1970 00:00:01 GMT",
+		"saml_KCosLjAyNDY4Ojw-QEJERkhKTE5QUlRWWFpcXmBiZGZoamxucHJ0dnh6=; Domain=15661444.ngrok.io; Expires=Thu, 01 Jan 1970 00:00:01 GMT",
 		"ttt=" + test.expectedSessionCookie + "; " +
 			"Path=/; Domain=15661444.ngrok.io; Max-Age=7200; HttpOnly; Secure"},
 		resp.Header()["Set-Cookie"])
